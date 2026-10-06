@@ -1,59 +1,67 @@
+import {
+  assignPending as assignPendingInDb,
+  DB_KEY,
+  getCachedInit,
+  initializeStorage,
+  persistModules,
+  readInitLog,
+  INIT_LOG_KEY,
+  type InitReport,
+  type PendingRecord,
+} from './init'
 import { SEED_ROWS } from './seed'
 import type { EntryRow } from './types'
 
 // 本地持久化：数据放在 localStorage 里，刷新、关掉再打开都还在。
-const STORAGE_KEY = 'field-archaeology-digital:entries'
+// 读取前先走可重复执行的初始化流水线（见 ./init），保证本地开发、构建预览、
+// 部署环境与已有本地存储都用同一份兼容规则，运营概览与各业务模块口径同源。
+export { DB_KEY, INIT_LOG_KEY, readInitLog }
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
-function readStorage(): Record<string, EntryRow[]> {
-  const fallback = clone(SEED_ROWS)
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return fallback
-  }
-  const raw = window.localStorage.getItem(STORAGE_KEY)
-  if (!raw) {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(fallback))
-    return fallback
-  }
-  try {
-    const parsed = JSON.parse(raw) as Record<string, EntryRow[]>
-    return { ...fallback, ...parsed }
-  } catch {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(fallback))
-    return fallback
-  }
+function database() {
+  return getCachedInit() ?? initializeStorage()
 }
 
-let cache: Record<string, EntryRow[]> | null = null
+/** 应用启动时调用一次；重复调用幂等，不会增加重复记录。 */
+export function initData(): InitReport {
+  return initializeStorage().report
+}
+
+export function lastInitReport(): InitReport {
+  return database().report
+}
 
 export function allRows(): Record<string, EntryRow[]> {
-  if (cache === null) {
-    cache = readStorage()
-  }
-  return cache
+  return database().db.modules
 }
 
 export function listRows(key: string): EntryRow[] {
   return allRows()[key] ?? []
 }
 
-export function saveRows(key: string, rows: EntryRow[]): void {
-  const next = { ...allRows(), [key]: rows }
-  cache = next
-  if (typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  }
+export function listPending(): PendingRecord[] {
+  return clone(database().db.pending)
+}
+
+export function saveRows(key: string, rows: EntryRow[]): EntryRow[] {
+  persistModules(key, rows)
+  return rows
 }
 
 export function resetRows(key: string): EntryRow[] {
   const rows = clone(SEED_ROWS[key] ?? [])
-  saveRows(key, rows)
+  persistModules(key, rows)
   return rows
 }
 
+export function assignPending(ledgerNo: string, moduleKey: string): string {
+  const { db } = database()
+  return assignPendingInDb(db, ledgerNo, moduleKey).message
+}
+
 export function storageKey(): string {
-  return STORAGE_KEY
+  return DB_KEY
 }

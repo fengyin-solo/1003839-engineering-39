@@ -35,4 +35,6 @@ export type ActionResult = {
 export type OverviewResult = {
   cards: { label: string; value: number }[]
   modules: { name: string; created: number; pending: number; abnormal: number }[]
+  /** 无法自动归属、留待人工处理的历史总账记录数（不计入任何业务模块存量） */
+  pendingQueue: number
 }

@@ -1,6 +1,18 @@
-import { MODULE_BY_KEY } from '@/data/modules'
-import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { MODULE_BY_KEY, MODULES } from '@/data/modules'
+import {
+  allRows,
+  assignPending as persistAssign,
+  lastInitReport,
+  listPending,
+  listRows,
+  readInitLog,
+  resetRows,
+  saveRows,
+} from '@/data/local-store'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
+
+export { lastInitReport, readInitLog }
+export type { InitReport, PendingRecord, PendingReason } from '@/data/init'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
@@ -86,7 +98,7 @@ export function downloadEntries(key: string): void {
 
 export function loadOverview(): OverviewResult {
   const rows = allRows()
-  const modules = [...MODULE_BY_KEY.values()].map((meta) => {
+  const modules = MODULES.map((meta) => {
     const entries = rows[meta.key] ?? []
     return {
       name: meta.name,
@@ -95,11 +107,24 @@ export function loadOverview(): OverviewResult {
       abnormal: entries.filter((row) => row.abnormal).length,
     }
   })
+  // 待归属队列单独成卡，不摊进任何业务模块：三页存量口径因此一致
+  const pendingQueue = listPending().length
   const cards = [
     { label: '业务模块', value: modules.length },
     { label: '登记总量', value: modules.reduce((sum, item) => sum + item.created, 0) },
     { label: '待处理', value: modules.reduce((sum, item) => sum + item.pending, 0) },
     { label: '异常量', value: modules.reduce((sum, item) => sum + item.abnormal, 0) },
+    { label: '待归属', value: pendingQueue },
   ]
-  return { cards, modules }
+  return { cards, modules, pendingQueue }
+}
+
+export function pendingEntries() {
+  return listPending()
+}
+
+export function assignPendingEntry(ledgerNo: string, moduleKey: string): ActionResult {
+  const message = persistAssign(ledgerNo, moduleKey)
+  const ok = message.includes('已归属')
+  return { ok, message }
 }
