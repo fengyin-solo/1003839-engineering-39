@@ -1,5 +1,6 @@
 import { MODULE_BY_KEY } from '@/data/modules'
-import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { allRows, bootstrapReports, listRows, listUnassigned, resetRows, saveRows } from '@/data/local-store'
+import type { BootstrapReport } from '@/data/bootstrap'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
@@ -95,11 +96,21 @@ export function loadOverview(): OverviewResult {
       abnormal: entries.filter((row) => row.abnormal).length,
     }
   })
+  // 与本地初始化同一份数据：各模块存量即对应业务页的列表总数；
+  // 无法归属的历史记录单独计入待人工处理，不摊进任何模块。
+  const unassigned = listUnassigned()
+  const moduleTotal = modules.reduce((sum, item) => sum + item.created, 0)
   const cards = [
     { label: '业务模块', value: modules.length },
-    { label: '登记总量', value: modules.reduce((sum, item) => sum + item.created, 0) },
+    { label: '登记总量', value: moduleTotal + unassigned.length },
     { label: '待处理', value: modules.reduce((sum, item) => sum + item.pending, 0) },
     { label: '异常量', value: modules.reduce((sum, item) => sum + item.abnormal, 0) },
+    { label: '待人工处理', value: unassigned.length },
   ]
-  return { cards, modules }
+  return { cards, modules, unassigned }
+}
+
+/** 初始化/迁移日志：每次启动的归属决策都留痕，可复现。 */
+export function overviewInitLog(): BootstrapReport[] {
+  return bootstrapReports()
 }

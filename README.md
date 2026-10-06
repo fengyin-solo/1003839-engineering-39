@@ -69,3 +69,31 @@ npm run build
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
 - 想回到初始数据：清掉浏览器里 `field-archaeology-digital:entries` 这一项，或调用 `resetModule(模块)`。
+
+## 数据初始化与迁移
+
+启动时（`main.ts`）先执行 `frontend/src/data/bootstrap.ts` 的初始化/迁移，本地开发、
+构建预览、部署环境和已有本地存储都走同一份规则：
+
+- **归属回填**：旧版本地存储里的总览记录只有登记总量、没有业务模块归属。初始化按确定性
+  规则回填——显式地层字段或 `STRA-####` 关联编号归「地层记录」，显式遗迹字段或
+  `FEAT-####` 关联编号归「遗迹单位」，回填行落在归属字段上并标记 `来源: 总览初始化回填`。
+- **不猜测覆盖**：关联冲突（同时指向地层与遗迹）、目标编号已存在、无关联或编号规则不识别
+  的记录，一律进入 `overview_unassigned` 待人工处理桶，在运营概览单独列出，不摊进任何模块。
+- **口径一致**：运营概览、地层记录、遗迹单位等页面读同一份本地数据；登记总量 =
+  各模块存量合计 + 待人工处理，各模块存量即对应业务页列表总数。
+- **幂等**：结构版本标记 + 记录级去重（来源登记编号），重复启动、强制重跑都不产生重复记录。
+- **原子**：整批先算后写，写入前校验（既有记录零改动、逐条有归属决定、总量对账）；
+  任何失败整批回退到迁移前快照。
+- **可复现日志**：每次真实迁移/失败追加到 `field-archaeology-digital:migration-log`，
+  内容确定（无时间戳、无随机数），同样的输入必然得到同样的日志与指纹。
+
+存储键：`field-archaeology-digital:entries`（业务数据 + 待人工桶）、
+`field-archaeology-digital:meta`（结构版本）、`field-archaeology-digital:migration-log`（迁移日志）。
+
+重复执行初始化校验（全新初始化 / 幂等重跑 / 旧版存储迁移 / 失败回退 / 日志可复现 / 跨页口径）：
+
+```bash
+cd frontend
+node scripts/verify-bootstrap.mjs
+```
